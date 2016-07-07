@@ -2,12 +2,16 @@ package com.m5c.safesockets;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.UnknownHostException;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  *
@@ -233,7 +237,8 @@ public final class SafeSocket extends MessageHandler implements Terminatable
     }
 
     /**
-     * private inner Thread that periodically sends heartBeats (ACK requests) to the remote client.
+     * private inner Thread that periodically sends heartBeats (ACK requests) to
+     * the remote client.
      */
     private class HeartBeatThread implements Runnable
     {
@@ -357,6 +362,23 @@ public final class SafeSocket extends MessageHandler implements Terminatable
 
         // Notify all local registered observers
         notifyAllMessageObservers(message);
+    }
+
+    /**
+     * Tells you whether the remote socket is attached to the same physical
+     * network interface as the local ending. Useful if you want to detect dummy
+     * loopback connections.
+     *
+     * @return
+     */
+    public boolean isLoopbackConnection()
+    {
+        try {
+            return socket.getInetAddress().equals(InetAddress.getByName(null));
+        }
+        catch (UnknownHostException ex) {
+            throw new RuntimeException("Unable to locate network interface details");
+        }
     }
 
 }
