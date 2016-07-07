@@ -31,7 +31,8 @@ Wrapping up Java sockets for integrated connectivity control
 ## Maven ##
 * Add the following to your pom.xml (somewhere within the ```<project>``` block)
 
-```<repositories>
+```
+<repositories>
 	[...]
 	<repository>
 		<id>jitpack.io</id>
