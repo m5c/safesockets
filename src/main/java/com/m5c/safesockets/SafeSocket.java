@@ -55,7 +55,7 @@ public final class SafeSocket extends MessageHandler implements Terminatable
      * message reception.
      * @throws IOException
      */
-    public SafeSocket(int port, int period, int timeout, Collection<MessageObserver> messageObservers, Collection<BreakdownObserver> breakdownObservers) throws IOException
+    public SafeSocket(ServerSocket serverSocket, int period, int timeout, Collection<MessageObserver> messageObservers, Collection<BreakdownObserver> breakdownObservers) throws IOException
     {
         serverMode = true;
         this.period = period;
@@ -64,7 +64,6 @@ public final class SafeSocket extends MessageHandler implements Terminatable
         this.breakdownObservers = breakdownObservers;
 
         // Wait for client to connect
-        ServerSocket serverSocket = new ServerSocket(port);
         socket = serverSocket.accept();
 
         // Prepare for Read/Write, Set up hearbeat (sender), 
