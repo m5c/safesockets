@@ -51,4 +51,5 @@ Wrapping up Java sockets for integrated connectivity control
 		<version>-SNAPSHOT</version>
 	</dependency>
 	[...]
-</dependencies>```
+</dependencies>
+```
