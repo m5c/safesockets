@@ -25,7 +25,29 @@ Wrapping up Java sockets for integrated connectivity control
 
 ### How do I get set up? ###
 
-* Checkout this repo 
-* Or just get the JAR (dist folder)
-* Add jar as library to your project
+## Old School ##
+* Checkout this repo, integrate included sources (src) or JAR (dist) 
 
+## Maven ##
+* Add the following to your pom.xml (somewhere within the ```<project>``` block)
+
+```<repositories>
+	[...]
+	<repository>
+		<id>jitpack.io</id>
+		<url>https://jitpack.io</url>
+	</repository>
+	[...]
+</repositories>
+
+[...]
+
+<dependencies>
+	[...]
+	<dependency>
+		<groupId>com.github.m5c</groupId>
+		<artifactId>safesockets</artifactId>
+		<version>-SNAPSHOT</version>
+	</dependency>
+	[...]
+</dependencies>```
