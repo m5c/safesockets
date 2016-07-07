@@ -32,7 +32,7 @@ Wrapping up Java sockets for integrated connectivity control
 ## How do I get set up? ##
 
 ### Old School ###
-* Checkout this repo, integrate included sources (src) or JAR (dist) 
+* Checkout this repo, integrate included sources (src) or JAR (target) 
 
 ### Maven ###
 * Add the following to your pom.xml (somewhere within the ```<project>``` block)
