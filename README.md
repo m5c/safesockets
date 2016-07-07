@@ -4,11 +4,11 @@
 
 ### In one sentence ###
 
-Wrapping up Java sockets for integrated connectivity control
+Wrapping up Java sockets for integrated connectivity monitoring 
 
 ### A little more & motivation ###
 
-* Java Sockets are a great tool. But though the undelying TCP Protocol supports it, timeouts (e.g. as a consequence of router crashes) are not configurable out of the box. 
+* Java Sockets are a great tool. But though the underlying TCP Protocol supports such, timeouts (e.g. as a consequence of router crashes) are not easily configurable out of the box. 
 * This is usualy dealt with by adding extra functionality to the applicatino layer. That is to say code sending test probes and ACKs repeatedly over established connections. This way you can detect connectivity issuas in (almost) real time.
 * However in most cases this is not something you are keen on implementing when developping an application. Good news is, you can use this library to do exactly that missing part for you, while focusing on the actual application code.
 
