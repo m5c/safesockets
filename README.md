@@ -104,4 +104,4 @@ You can register your own observers by passing them (in collections) to the Safe
 * MessageObservers: Will be notified on each incoming message (except for probes & acks)
 * BreakDownObservers: Will be notified as soon as the connection is considered lost.
 
-Note: As soon as a connection is considered lost, you will cannot send any further messages. Just discard it and create a new one.
+Note: As soon as a connection is considered lost, you cannot send any further messages. Just discard it and create a new one.
