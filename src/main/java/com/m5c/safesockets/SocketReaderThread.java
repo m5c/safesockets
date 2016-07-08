@@ -13,7 +13,6 @@ public class SocketReaderThread extends Thread
 {
 
     // The socket whichs output is operated on
-
     private final Socket socket;
 
     // The instance handling the extracted messages (lately the safeSocket)
@@ -37,7 +36,7 @@ public class SocketReaderThread extends Thread
 
                     // Read in message coming over TCP Socket (until socket was closed ). Note: The connection will only be closed by the server, never by the client (except for breakdowns.)
                     while (!socket.isClosed()) {
-                        StringBuilder incomingMessage = new StringBuilder("");
+                        StringBuilder incomingMessage = null;
                         String inputLine;
 
                         //keep on reading until message complete (or connection brutally closed)
@@ -55,14 +54,15 @@ public class SocketReaderThread extends Thread
                                 messageComplete = true;
                                 messageHandler.handleUserMessage(incomingMessage.toString());
                             }
-                            else if(inputLine.startsWith(InternalMessages.DISCONNECT))
-                            {
+                            else if (inputLine.startsWith(InternalMessages.DISCONNECT))
                                 //remote host requested disconnect
                                 messageHandler.assymentricDisconnect(true);
-                            }
                             // The line just read is part of an ordinary message
                             else
-                                incomingMessage.append(inputLine);
+                                if (incomingMessage == null)
+                                    incomingMessage = new StringBuilder(inputLine);
+                                else
+                                    incomingMessage.append("\n").append(inputLine);
                         }
                     }
                 }
