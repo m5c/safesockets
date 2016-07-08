@@ -140,7 +140,7 @@ public final class SafeSocket extends MessageHandler implements Terminatable
 
             // unblock sender method
             if (message.startsWith(InternalMessages.MESSAGE_ACK)) {
-                CountDownLatch latch = ackBlockers.get(message); //ToDo: remove instead of get here and remove current "remove" after unblocking
+                CountDownLatch latch = ackBlockers.remove(message);
                 latch.countDown();
             }
         }
@@ -201,7 +201,6 @@ public final class SafeSocket extends MessageHandler implements Terminatable
         timeoutKiller.start();
         try {
             awaitAck.await();
-            ackBlockers.remove(messageId);
         }
         catch (InterruptedException ex) {
             throw new RuntimeException();
@@ -318,7 +317,6 @@ public final class SafeSocket extends MessageHandler implements Terminatable
      * Actively closing the connection prevents replying to further incoming
      * heartbeats / ACKs / sending of further messages.
      */
-    //ToDO: throw IOException (?)
     @Override
     protected void assymentricDisconnect(boolean intended)
     {
@@ -347,7 +345,6 @@ public final class SafeSocket extends MessageHandler implements Terminatable
     @Override
     public void onTerminate()
     {
-        System.out.println("[TO!] -> terminating");
         assymentricDisconnect(false);
     }
 
