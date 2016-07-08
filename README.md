@@ -21,14 +21,15 @@ Wrapping up Java sockets for integrated connectivity monitoring
 * You can use you own params for timeouts, sending-probe-intervals, ...
 * Compiled against JDK1.6, so you can use it on Android (though by no means a replacement for PNS)
 * Checks message integrity by using hashes
-* Blocks on sending until reception of ACK, so you can rely on your message having been transmitted
-* Supports concurrent sending. You can have multiple threads sending messages through one and the same SafeSocket. The will still be received and ACKed individually.
+* Blocks on sending until reception of ACK (or timeout) and returns you a boolean, so you know when a message has been transmitted for sure. 
+* Supports concurrent senders. You can have multiple threads sending messages through one and the same SafeSocket. The messages will still be identified and ACKed individuallyon the other side.
 * Easy to use
 * No dependencies
 
 ### Con ###
 
 * Currently only Strings supported (as message type).
+* In the rare case of a connection breakdown during the sending of a message ACK, you will be returned "false" on the sending method, though the message has actually been transferred. But anyways you will still be notified about the connection breakdown itself.
 
 ## How do I get set up? ##
 
