@@ -11,7 +11,7 @@ public abstract class MessageHandler
 
     protected abstract void handleInternalMessage(String message);
 
-    protected abstract void handleUserMessage(String message);
+    protected abstract void handleUserMessage(String message, int salt);
 
     protected abstract void assymentricDisconnect(boolean intended);
 

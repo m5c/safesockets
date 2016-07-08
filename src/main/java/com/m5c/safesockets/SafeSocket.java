@@ -7,8 +7,9 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.Collection;
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 
 /**
@@ -20,7 +21,10 @@ public final class SafeSocket extends MessageHandler implements Terminatable
 
     private final int INITIAL_HEART_BEAT_ID = 0;
 
-    // Tells whther the SafeSocket is in Client or Server mode (set in ctor)
+    // Needed to distinguish messages with identical content (have same hash otherwise)
+    private int messageSalt = 0;
+
+    // Tells whether the SafeSocket is in Client or Server mode (set in ctor)
     private final boolean serverMode;
 
     // The inner socket used for communication
@@ -34,10 +38,10 @@ public final class SafeSocket extends MessageHandler implements Terminatable
 
     // Each heartBeat or send message requires an ack within the timeout interval - this list is needed to defuse the threads killing the connection on reception of the ack 
     // Note: on client side the heart beats themselves are interpreted as signal to defuse the associated connectionKiller
-    private final HashMap<String, Terminator> connectionKillers = new LinkedHashMap<String, Terminator>();
+    private final Map<String, Terminator> connectionKillers = Collections.synchronizedMap(new LinkedHashMap<String, Terminator>());
 
     // Each message sent has an attached CountDownLatch, so we can block in the sending method until the Ack (or timeout for the Ack) has arrived.
-    private final HashMap<String, CountDownLatch> ackBlockers = new LinkedHashMap<String, CountDownLatch>();
+    private final Map<String, CountDownLatch> ackBlockers = Collections.synchronizedMap(new LinkedHashMap<String, CountDownLatch>());
 
     private boolean socketAlive = false;
     private PrintWriter printWriter;
@@ -127,17 +131,18 @@ public final class SafeSocket extends MessageHandler implements Terminatable
     @Override
     protected void handleInternalMessage(String message)
     {
-        // In case of an expeted message (anything but delimiter), find attatched connection killer and deactivate it
+        // In case of an expected message (anything but delimiter), find attatched connection killer and deactivate it
         if (message.startsWith(InternalMessages.MESSAGE_ACK) || message.startsWith(InternalMessages.HEART_BEAT_ACK)) {
             if (!connectionKillers.containsKey(message))
                 throw new RuntimeException("Unable to resolve terminator for internal message: " + message);
-            connectionKillers.get(message).deactivate();
-            connectionKillers.remove(message);
+            connectionKillers.remove(message).deactivate();
+            //connectionKillers.remove(message);
 
             // unblock sender method
-            if (message.startsWith(InternalMessages.MESSAGE_ACK))
-                ackBlockers.get(message).countDown();
-
+            if (message.startsWith(InternalMessages.MESSAGE_ACK)) {
+                CountDownLatch latch = ackBlockers.get(message); //ToDo: remove instead of get here and remove current "remove" after unblocking
+                latch.countDown();
+            }
         }
         // in case of a heartbeat: send back matching ack and reset heartbeat receiver
         else if (message.startsWith(InternalMessages.HEART_BEAT)) {
@@ -178,9 +183,12 @@ public final class SafeSocket extends MessageHandler implements Terminatable
         // Check if the message contains substrings reserved for internal usage
         saneMessageCheck(message);
 
+        // We use an ACk message with the salted messages Hash as identifier
+        String wrappedMessage = message + "\n" + InternalMessages.MESSAGE_DELIMITER + getSalt();
+        String messageId = InternalMessages.MESSAGE_ACK + Md5Hasher.getMessageHash(wrappedMessage);
+
         // Create a latch and stock it in ackBlockers hashmap, so it is access-
-        // ible throughout the class. (unblocked by timeout or ack receiver)
-        String messageId = InternalMessages.MESSAGE_ACK + Md5Hasher.getMessageHash(message);
+        // ible throughout the class. (unblocked by timeout or ack receiver)        
         CountDownLatch awaitAck = new CountDownLatch(1);
         ackBlockers.put(messageId, awaitAck);
 
@@ -188,8 +196,8 @@ public final class SafeSocket extends MessageHandler implements Terminatable
         Terminator timeoutKiller = new Terminator(timeout, this);
         connectionKillers.put(messageId, timeoutKiller);
 
-        // actually send the message, the launch killer and block thread
-        sendAckLessMessage(message + "\n" + InternalMessages.MESSAGE_DELIMITER);
+        // Actually send the message, then launch the killer and block this thread
+        sendAckLessMessage(wrappedMessage);
         timeoutKiller.start();
         try {
             awaitAck.await();
@@ -207,7 +215,15 @@ public final class SafeSocket extends MessageHandler implements Terminatable
         return socketAlive;
     }
 
-    private void sendAckLessMessage(String message)
+    /**
+     * This method sends the actual message. ACKs must be attended and handled
+     * externally to this method. Also Actual user-messages should must be
+     * passed to this method in one piece, not in chunks (this is required for
+     * thread safety.)
+     *
+     * @param message
+     */
+    private synchronized void sendAckLessMessage(String message)
     {
         printWriter.println(message);
         printWriter.flush();
@@ -331,6 +347,7 @@ public final class SafeSocket extends MessageHandler implements Terminatable
     @Override
     public void onTerminate()
     {
+        System.out.println("[TO!] -> terminating");
         assymentricDisconnect(false);
     }
 
@@ -353,10 +370,12 @@ public final class SafeSocket extends MessageHandler implements Terminatable
     }
 
     @Override
-    protected void handleUserMessage(String message)
+    protected void handleUserMessage(String message, int salt)
     {
-        // Notify sender about reception of message
-        sendAckLessMessage(InternalMessages.MESSAGE_ACK + Md5Hasher.getMessageHash(message));
+        // Create hash of wrapped message and send reception ACK back to sender
+        String wrappedMessage = message + "\n" + InternalMessages.MESSAGE_DELIMITER + salt;
+        String checksum = Md5Hasher.getMessageHash(wrappedMessage);
+        sendAckLessMessage(InternalMessages.MESSAGE_ACK + checksum);
 
         // Notify all local registered observers
         notifyAllMessageObservers(message);
@@ -377,6 +396,16 @@ public final class SafeSocket extends MessageHandler implements Terminatable
         catch (UnknownHostException ex) {
             throw new RuntimeException("Unable to locate network interface details");
         }
+    }
+
+    /**
+     * A new salt is required for every USER-message, to create unique hashes
+     * even on identical message content.
+     */
+    private synchronized int getSalt()
+    {
+        messageSalt += 1;
+        return messageSalt;
     }
 
 }

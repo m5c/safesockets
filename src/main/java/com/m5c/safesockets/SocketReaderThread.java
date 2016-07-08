@@ -46,23 +46,25 @@ public class SocketReaderThread extends Thread
                             if (inputLine == null)
                                 throw new UnfriendlyConnectionBreakdownException();
 
-                            // Ack lines may arrive within actual messeges, since they are sent by concurrent threads (whereas the sending of actual messages in blocking).
+                            // Ack lines cannot arrive within actual messages, since the sending method is synchronized (as is the flush method)
                             if (InternalMessages.isReserved(inputLine) && !inputLine.startsWith(InternalMessages.MESSAGE_DELIMITER))
                                 messageHandler.handleInternalMessage(inputLine);
                             // End of a message reached, notfiy observersa and send Ack for reception
                             else if (inputLine.startsWith(InternalMessages.MESSAGE_DELIMITER)) {
                                 messageComplete = true;
-                                messageHandler.handleUserMessage(incomingMessage.toString());
+                                int salt = Integer.parseInt(inputLine.replaceFirst(InternalMessages.MESSAGE_DELIMITER, ""));
+                                messageHandler.handleUserMessage(incomingMessage.toString(), salt);
                             }
                             else if (inputLine.startsWith(InternalMessages.DISCONNECT))
                                 //remote host requested disconnect
                                 messageHandler.assymentricDisconnect(true);
+
                             // The line just read is part of an ordinary message
+                            // Either initialize or append line just read
+                            else if (incomingMessage == null)
+                                incomingMessage = new StringBuilder(inputLine);
                             else
-                                if (incomingMessage == null)
-                                    incomingMessage = new StringBuilder(inputLine);
-                                else
-                                    incomingMessage.append("\n").append(inputLine);
+                                incomingMessage.append("\n").append(inputLine);
                         }
                     }
                 }
