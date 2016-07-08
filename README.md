@@ -22,12 +22,12 @@ Wrapping up Java sockets for integrated connectivity monitoring
 * Compiled against JDK1.6, so you can use it on Android (though by no means a replacement for PNS)
 * Checks message integrity by using hashes
 * Blocks on sending until reception of ACK, so you can rely on your message having been transmitted
+* Supports concurrent sending. You can have multiple threads sending messages through one and the same SafeSocket. The will still be received and ACKed individually.
 * Easy to use
 * No dependencies
 
 ### Con ###
 
-* Not Thread safe (Does not support concurrent sending of several messages on one single SafeSocket's end)
 * Currently only Strings supported (as message type).
 
 ## How do I get set up? ##
@@ -60,3 +60,45 @@ Wrapping up Java sockets for integrated connectivity monitoring
 	[...]
 </dependencies>
 ```
+
+## How do I SafeSockets? ##
+
+### Params ###
+``` Java
+int HEART_BEAT_RATE
+```
+as the time interval between two probes [ms].
+
+``` Java
+int TIMEOUT
+```
+as the max delay [ms] for an ACK before the connection is considered lost.
+
+### Server side setup ###
+Create a SafeSocket by passing a ServerSocket object:
+``` Java
+new SafeSocket(serverSocket, HEART_BEAT_RATE, TIMEOUT, messageObservers, breakDownObservers);
+```
+The Observers are Collections of the provided observer interfaces. May be empty but not null.
+(Hint 1: The contructor blocks until a client has connected.)
+(Hint 2: You can run multiple SafeSockets on the same port by reusing the same serverSocket entity.)
+
+### Client side setup ###
+Connect to a server by specifying IP and port:
+``` Java
+new SafeSocket("192.168.1.42", 2610, HEART_BEAT_RATE, TIMEOUT, messageObservers, breakdownObservers);
+```
+
+### Send some content ###
+You can send arbitrary strings by calling:
+``` Java
+safeSocket.sendMessage("Foo");
+```
+This instruction will block and return either
+* true: If the remote client has ACKed the message
+* false: If a timeout occured while waiting for the ACK
+
+### Events ###
+You can register your own observers by passing them (in collections) to the SafeSocket constructor.
+* MessageObservers: Will be notified on each incoming message (except for probes & acks)
+* BreakDownObservers: Will be notified as soon as the connection is considered lost.
