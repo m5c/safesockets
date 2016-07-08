@@ -61,21 +61,21 @@ Wrapping up Java sockets for integrated connectivity monitoring
 </dependencies>
 ```
 
-## How do I SafeSockets? ##
+## How do I use SafeSockets? ##
 
 ### Params ###
 ``` Java
-int HEART_BEAT_RATE
+int HEART_BEAT_RATE = 2000;
 ```
 as the time interval between two probes [ms].
 
 ``` Java
-int TIMEOUT
+int TIMEOUT = 500;
 ```
 as the max delay [ms] for an ACK before the connection is considered lost.
 
 ### Server side setup ###
-Create a SafeSocket by passing a ServerSocket object:
+Create a SafeSocket by using the following constructor:
 ``` Java
 new SafeSocket(serverSocket, HEART_BEAT_RATE, TIMEOUT, messageObservers, breakDownObservers);
 ```
@@ -84,21 +84,24 @@ The Observers are Collections of the provided observer interfaces. May be empty 
 (Hint 2: You can run multiple SafeSockets on the same port by reusing the same serverSocket entity.)
 
 ### Client side setup ###
-Connect to a server by specifying IP and port:
+Connect to a server by specifying IP and port instead of the ServerSocket:
 ``` Java
 new SafeSocket("192.168.1.42", 2610, HEART_BEAT_RATE, TIMEOUT, messageObservers, breakdownObservers);
 ```
+Note: HEART_BEAT_RATE and TIMEOUT must be identical to the parameters on server side.
 
-### Send some content ###
-You can send arbitrary strings by calling:
+### Send some actual content ###
+You can send strings by calling:
 ``` Java
 safeSocket.sendMessage("Foo");
 ```
 This instruction will block and return either
-* true: If the remote client has ACKed the message
-* false: If a timeout occured while waiting for the ACK
+* true:		if the remote client has ACKed the message before it's timeout
+* false:	if a timeout occured while waiting for the ACK
 
 ### Events ###
 You can register your own observers by passing them (in collections) to the SafeSocket constructor.
 * MessageObservers: Will be notified on each incoming message (except for probes & acks)
 * BreakDownObservers: Will be notified as soon as the connection is considered lost.
+
+Note: As soon as a connection is considered lost, you will cannot send any further messages. Just discard it and create a new one.
