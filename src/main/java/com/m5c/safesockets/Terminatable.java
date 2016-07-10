@@ -7,5 +7,5 @@ package com.m5c.safesockets;
  */
 public interface Terminatable
 {
-    public void onTerminate();
+    public void onTerminate(String cause);
 }

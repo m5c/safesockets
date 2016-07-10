@@ -14,12 +14,14 @@ public class Terminator extends Thread
     private final int timeout;
     private final Terminatable terminatable;
     private boolean expectedSignalArrived = false;
+    private final String description;
 
-    public Terminator(int timeout, Terminatable terminatable)
+    public Terminator(String description, int timeout, Terminatable terminatable)
     {
         super();
         this.timeout = timeout;
         this.terminatable = terminatable;
+        this.description = description;
     }
 
     public void deactivate()
@@ -33,7 +35,7 @@ public class Terminator extends Thread
         try {
             Thread.sleep(timeout);
             if (!expectedSignalArrived)
-                terminatable.onTerminate();
+                terminatable.onTerminate(description);
         }
         catch (InterruptedException e) {
             throw new RuntimeException();

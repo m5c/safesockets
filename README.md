@@ -34,7 +34,8 @@ Wrapping up Java sockets for integrated connectivity monitoring
 ## How do I get set up? ##
 
 ### Old School ###
-* Checkout this repo, integrate included sources (src) or JAR (target) 
+* Checkout this repo
+* Integrate the included sources (src) or JAR (target) into your project
 
 ### Maven ###
 * Add the following to your pom.xml (somewhere within the ```<project>``` block)
@@ -62,6 +63,25 @@ Wrapping up Java sockets for integrated connectivity monitoring
 </dependencies>
 ```
 
+### Gradle ###
+* Add this to your root build.gradle (the one at top level in your project)
+```
+allprojects {
+    repositories {
+    	jcenter()
+	maven { url "https://jitpack.io" }
+    }
+}
+```
+
+* Then add this to the build.gradle at app scope (usualy one level down to the previous)
+```
+dependencies {
+    compile 'com.github.m5c:safesockets:-SNAPSHOT'
+}
+```
+
+
 ## How do I use SafeSockets? ##
 
 ### Params ###
@@ -81,15 +101,15 @@ Create a SafeSocket by using the following constructor:
 new SafeSocket(serverSocket, HEART_BEAT_RATE, TIMEOUT, messageObservers, breakDownObservers);
 ```
 The Observers are Collections of the provided observer interfaces. May be empty but not null.
-(Hint 1: The contructor blocks until a client has connected.)
-(Hint 2: You can run multiple SafeSockets on the same port by reusing the same serverSocket entity.)
+* Hint 1: The contructor blocks until a client has connected.
+* Hint 2: You can run multiple SafeSockets on the same port by reusing the same serverSocket entity.
 
 ### Client side setup ###
 Connect to a server by specifying IP and port instead of the ServerSocket:
 ``` Java
 new SafeSocket("192.168.1.42", 2610, HEART_BEAT_RATE, TIMEOUT, messageObservers, breakdownObservers);
 ```
-Note: HEART_BEAT_RATE and TIMEOUT must be identical to the parameters on server side.
+* Note: HEART_BEAT_RATE and TIMEOUT must be identical to the parameters on server side.
 
 ### Send some actual content ###
 You can send strings by calling:

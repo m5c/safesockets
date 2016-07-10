@@ -115,7 +115,7 @@ public final class SafeSocket extends MessageHandler implements Terminatable
 
         // Initialize heartbeat receiver
         else {
-            Terminator initialTerminator = new Terminator((int) (period * 1.5), this);
+            Terminator initialTerminator = new Terminator("T-HBA: " + INITIAL_HEART_BEAT_ID, (int) (period * 1.5), this);
             String killerId = InternalMessages.HEART_BEAT + INITIAL_HEART_BEAT_ID;
             connectionKillers.put(killerId, initialTerminator);
             initialTerminator.start();
@@ -193,7 +193,7 @@ public final class SafeSocket extends MessageHandler implements Terminatable
         ackBlockers.put(messageId, awaitAck);
 
         // Create a killer that unblocks the latch in case of a timeout
-        Terminator timeoutKiller = new Terminator(timeout, this);
+        Terminator timeoutKiller = new Terminator("T-MA: " + message + " / " + messageId, timeout, this);
         connectionKillers.put(messageId, timeoutKiller);
 
         // Actually send the message, then launch the killer and block this thread
@@ -222,19 +222,25 @@ public final class SafeSocket extends MessageHandler implements Terminatable
      *
      * @param message
      */
-    private synchronized void sendAckLessMessage(String message)
+    private void sendAckLessMessage(String message)
     {
         printWriter.println(message);
         printWriter.flush();
     }
 
     /**
-     * Passes incoming message to all registered message observers.
+     * Passes incoming message to all registered message observers. Note: The
+     * Observers MUST be notified asynchronously. OTherwise we risk blocking
+     * observers (e.g. if they send messages themselves). This can easily lead
+     * to connection breakdowns, since the SocketReaderThread is also blocked
+     * then and cannot handle incoming heartbeats or messages anymore (so no
+     * ACKs will be sent out, too)
      */
-    protected void notifyAllMessageObservers(String message)
+    protected void notifyAllMessageObservers(final String message)
     {
         for (MessageObserver messageObserver : messageObservers) {
-            messageObserver.notifyMessageObserver(this, message);
+            Thread observerNotifierThread = new ObserverNotifierThread(messageObserver, this, message);
+            observerNotifierThread.start();
         }
     }
 
@@ -264,7 +270,7 @@ public final class SafeSocket extends MessageHandler implements Terminatable
                 try {
                     // Register and launch new Terminator
                     String killerId = InternalMessages.HEART_BEAT_ACK + heartBeartCounter;
-                    Terminator killer = new Terminator(timeout, SafeSocket.this);
+                    Terminator killer = new Terminator("T-HBA: " + heartBeartCounter, timeout, SafeSocket.this);
                     connectionKillers.put(killerId, killer);
                     killer.start();
 
@@ -294,7 +300,7 @@ public final class SafeSocket extends MessageHandler implements Terminatable
         // Launch a new one, next id is old id+1
         int idNumber = Integer.parseInt(message.replace(InternalMessages.HEART_BEAT, "")) + 1;
         String terminatorId = InternalMessages.HEART_BEAT + idNumber;
-        Terminator nextTerminator = new Terminator((int) (period * 1.5), this);
+        Terminator nextTerminator = new Terminator("T-HBR: " + idNumber, (int) (period * 1.5), this);
         connectionKillers.put(terminatorId, nextTerminator);
         nextTerminator.start();
     }
@@ -343,7 +349,7 @@ public final class SafeSocket extends MessageHandler implements Terminatable
      * that case we consider the connection broken on close it down.
      */
     @Override
-    public void onTerminate()
+    public void onTerminate(String cause)
     {
         assymentricDisconnect(false);
     }

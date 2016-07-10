@@ -45,8 +45,9 @@ public class SocketReaderThread extends Thread
                             inputLine = bufferedReader.readLine();
                             if (inputLine == null)
                                 throw new UnfriendlyConnectionBreakdownException();
-
+                            
                             // Ack lines cannot arrive within actual messages, since the sending method is synchronized (as is the flush method)
+                            // If an internal message other than DELIMITER
                             if (InternalMessages.isReserved(inputLine) && !inputLine.startsWith(InternalMessages.MESSAGE_DELIMITER))
                                 messageHandler.handleInternalMessage(inputLine);
                             // End of a message reached, notfiy observersa and send Ack for reception
