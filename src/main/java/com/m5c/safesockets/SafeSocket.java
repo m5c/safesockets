@@ -361,11 +361,13 @@ public final class SafeSocket extends MessageHandler implements Terminatable
      */
     private void saneMessageCheck(String message)
     {
+        if(message == null || message.trim().equals(""))
+            throw new RuntimeException("Sending of null / whitespace messages not allowed.");
         for (String line : message.split("\n")) {
             if (InternalMessages.isReserved(line)) {
                 disconnect();
                 throw new RuntimeException("Shutting down connection due to "
-                        + "malicious message collides pattern reserved for"
+                        + "malicious message colliding patterns reserved for"
                         + " internal safeSocket communication: "
                         + message);
             }
