@@ -3,8 +3,10 @@ package com.m5c.safesockets;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketAddress;
 import java.net.UnknownHostException;
 import java.util.Collection;
 import java.util.Collections;
@@ -80,11 +82,28 @@ public final class SafeSocket extends MessageHandler implements Terminatable
     }
 
     /**
+     * Constructor setting up client side safeSocket with default timeout for
+     * initial connection setup.
+     *
+     * @param serverIp
+     * @param port
+     * @param period
+     * @param timeout
+     * @param messageObservers
+     * @param breakdownObservers
+     * @throws IOException
+     */
+    public SafeSocket(String serverIp, int port, int period, int timeout, Collection<MessageObserver> messageObservers, Collection<BreakdownObserver> breakdownObservers) throws IOException
+    {
+        this(serverIp, port, timeout, period, timeout, messageObservers, breakdownObservers);
+    }
+
+    /**
      * Constructor for SafeSocket in Client mode.
      *
      * @params: see precious constructor
      */
-    public SafeSocket(String serverIp, int port, int period, int timeout, Collection<MessageObserver> messageObservers, Collection<BreakdownObserver> breakdownObservers) throws IOException
+    public SafeSocket(String serverIp, int port, int initialTimeout, int period, int timeout, Collection<MessageObserver> messageObservers, Collection<BreakdownObserver> breakdownObservers) throws IOException
     {
         serverMode = false;
         this.period = period;
@@ -93,7 +112,10 @@ public final class SafeSocket extends MessageHandler implements Terminatable
         this.breakdownObservers = breakdownObservers;
 
         // Connect to server
-        socket = new Socket(serverIp, port);
+        //socket = new Socket(serverIp, port);
+        socket = new Socket();
+        SocketAddress address = new InetSocketAddress(serverIp, port);
+        socket.connect(address, timeout);
         initializeConnection();
 
         // Now that the connection has been established, asynchronously wait for messages and hearbeats to come in
@@ -361,7 +383,7 @@ public final class SafeSocket extends MessageHandler implements Terminatable
      */
     private void saneMessageCheck(String message)
     {
-        if(message == null || message.trim().equals(""))
+        if (message == null || message.trim().equals(""))
             throw new RuntimeException("Sending of null / whitespace messages not allowed.");
         for (String line : message.split("\n")) {
             if (InternalMessages.isReserved(line)) {
