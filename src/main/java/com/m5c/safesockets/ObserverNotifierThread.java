@@ -23,7 +23,7 @@ public class ObserverNotifierThread extends Thread
     @Override
     public void run()
     {
-        observer.notifyMessageObserver(safeSocket, message);
+        observer.notifyMessageObserver(safeSocket, message); // ToDo: might need a queue for incoming notifications.
     }
 
 }

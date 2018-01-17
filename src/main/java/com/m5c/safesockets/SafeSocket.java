@@ -52,8 +52,12 @@ public final class SafeSocket extends MessageHandler implements Terminatable
     private final Collection<MessageObserver> messageObservers;
     private final Collection<BreakdownObserver> breakdownObservers;
 
+    // Filter that intercepts any outward message and can manipulate the content.
+    private final Filter outFilter;
+
     /**
-     * Constructor for SafeSocket in Server mode
+     * Constructor for server side SafeSocket. Calling this constructor blocks
+     * until a client connection is established.
      *
      * @param port: The server port
      * @param period: Time between two HeartBeats
@@ -65,25 +69,43 @@ public final class SafeSocket extends MessageHandler implements Terminatable
      */
     public SafeSocket(ServerSocket serverSocket, int period, int timeout, Collection<MessageObserver> messageObservers, Collection<BreakdownObserver> breakdownObservers) throws IOException
     {
+        this(serverSocket, period, timeout, messageObservers, breakdownObservers, new DefaultFilter(), new DefaultFilter());
+    }
+
+    /**
+     * Constructor for server side SafeSocket with custom I/O filters. Calling
+     * this constructor blocks until a client connection is established. XXX
+     *
+     * @param serverSocket
+     * @param period
+     * @param timeout
+     * @param messageObservers
+     * @param breakdownObservers
+     * @param inFilter
+     * @param outFilter
+     * @throws IOException
+     */
+    public SafeSocket(ServerSocket serverSocket, int period, int timeout, Collection<MessageObserver> messageObservers, Collection<BreakdownObserver> breakdownObservers, Filter inFilter, Filter outFilter) throws IOException
+    {
         serverMode = true;
         this.period = period;
         this.timeout = timeout;
         this.messageObservers = messageObservers;
         this.breakdownObservers = breakdownObservers;
+        this.outFilter = outFilter;
 
         // Wait for client to connect
         socket = serverSocket.accept();
 
-        // Prepare for Read/Write, Set up hearbeat (sender), 
-        initializeConnection();
-
         // Now that the connection has been established, launch asynchronous heartbeat and wait for messages (actual and Acks) to come in
-        activateConnection();
+        activateReader(inFilter);
+
+        // Prepare for Read/Write, Set up hearbeat (sender), 
+        initializeHearbeats();
     }
 
     /**
-     * Constructor setting up client side safeSocket with default timeout for
-     * initial connection setup.
+     * Constructor for setting up client side SafeSocket.
      *
      * @param serverIp
      * @param port
@@ -95,34 +117,49 @@ public final class SafeSocket extends MessageHandler implements Terminatable
      */
     public SafeSocket(String serverIp, int port, int period, int timeout, Collection<MessageObserver> messageObservers, Collection<BreakdownObserver> breakdownObservers) throws IOException
     {
-        this(serverIp, port, timeout, period, timeout, messageObservers, breakdownObservers);
+        this(serverIp, port, period, timeout, messageObservers, breakdownObservers, new DefaultFilter(), new DefaultFilter());
     }
 
     /**
-     * Constructor for SafeSocket in Client mode.
+     * Constructor for setting up client side SafeSocket with custom I/O
+     * filters.
      *
-     * @params: see precious constructor
+     * @param serverIp
+     * @param port
+     * @param period
+     * @param timeout
+     * @param messageObservers
+     * @param breakdownObservers
+     * @param inFilter
+     * @param outFilter
+     * @throws IOException
      */
-    public SafeSocket(String serverIp, int port, int initialTimeout, int period, int timeout, Collection<MessageObserver> messageObservers, Collection<BreakdownObserver> breakdownObservers) throws IOException
+    public SafeSocket(String serverIp, int port, int period, int timeout, Collection<MessageObserver> messageObservers, Collection<BreakdownObserver> breakdownObservers, Filter inFilter, Filter outFilter) throws IOException
     {
         serverMode = false;
         this.period = period;
         this.timeout = timeout;
         this.messageObservers = messageObservers;
         this.breakdownObservers = breakdownObservers;
+        this.outFilter = outFilter;
 
         // Connect to server
-        //socket = new Socket(serverIp, port);
         socket = new Socket();
         SocketAddress address = new InetSocketAddress(serverIp, port);
         socket.connect(address, timeout);
-        initializeConnection();
 
         // Now that the connection has been established, asynchronously wait for messages and hearbeats to come in
-        activateConnection();
+        activateReader(inFilter);
+
+        initializeHearbeats();
     }
 
-    private void initializeConnection() throws IOException
+    public boolean isMaster()
+    {
+        return serverMode;
+    }
+
+    private void initializeHearbeats() throws IOException
     {
         socketAlive = true;
 
@@ -144,9 +181,9 @@ public final class SafeSocket extends MessageHandler implements Terminatable
         }
     }
 
-    public void activateConnection() throws IOException
+    private void activateReader(Filter inFilter) throws IOException
     {
-        Thread activateThread = new SocketReaderThread(socket, this);
+        Thread activateThread = new SocketReaderThread(socket, this, inFilter);
         activateThread.start();
     }
 
@@ -158,7 +195,6 @@ public final class SafeSocket extends MessageHandler implements Terminatable
             if (!connectionKillers.containsKey(message))
                 throw new RuntimeException("Unable to resolve terminator for internal message: " + message);
             connectionKillers.remove(message).deactivate();
-            //connectionKillers.remove(message);
 
             // unblock sender method
             if (message.startsWith(InternalMessages.MESSAGE_ACK)) {
@@ -198,10 +234,19 @@ public final class SafeSocket extends MessageHandler implements Terminatable
      * @param message
      * @return Whether the message has arrived FOR SURE on the other side. Note:
      * If returned false, the message may still have been transmitted (and only
-     * the ACK did not make it).
+     * the ACK did not make it). In case the connection has already been
+     * detached this method directly returns false, with no extra error
+     * handling. Reason is the sender has the possibility to subscribe as
+     * BreakdownObserver. If he does so he does no need to actively send
+     * messages on a dead connection.
      */
     public boolean sendMessage(String message)
     {
+        // Bounce if socket is not alive any more (sender has already been 
+        // notified, about breakdown. We directly return false)
+        if (!isSocketAlive())
+            return false;
+
         // Check if the message contains substrings reserved for internal usage
         saneMessageCheck(message);
 
@@ -246,13 +291,17 @@ public final class SafeSocket extends MessageHandler implements Terminatable
      */
     private void sendAckLessMessage(String message)
     {
-        printWriter.println(message);
-        printWriter.flush();
+        // Before sending, pipe message through filter. Send the output unless it has been flagged as discarded.
+        message = outFilter.filter(message);
+        if (!message.matches(InternalMessages.MESSAGE_DISCARDED)) {
+            printWriter.println(message);
+            printWriter.flush();
+        }
     }
 
     /**
      * Passes incoming message to all registered message observers. Note: The
-     * Observers MUST be notified asynchronously. OTherwise we risk blocking
+     * Observers MUST be notified asynchronously. Otherwise we risk blocking
      * observers (e.g. if they send messages themselves). This can easily lead
      * to connection breakdowns, since the SocketReaderThread is also blocked
      * then and cannot handle incoming heartbeats or messages anymore (so no
@@ -270,7 +319,7 @@ public final class SafeSocket extends MessageHandler implements Terminatable
      * Notifies all attached breakdown observers, the connection has finally
      * broken down.
      */
-    private void notifyAllBreakDownObservers(boolean intended)
+    private synchronized void notifyAllBreakDownObservers(boolean intended)
     {
         for (BreakdownObserver breakdownObserver : breakdownObservers) {
             breakdownObserver.notifyBreakdownObserver(this, intended);
@@ -330,29 +379,37 @@ public final class SafeSocket extends MessageHandler implements Terminatable
     /**
      * In contrast to the next method this public method is not called due to a
      * broken connection, but as an intentional user-taken decision to close
-     * down a working connection.
+     * down a working connection. Tells whether an actual close was issued (in
+     * case the connection was already dead, the call is ignored) NOTE:
+     * closeable interface currently not implemented for java 1.6 compatibility.
      */
-    public void disconnect()
+    public void close()
     {
-        // Thus the other side has to be notified about this decision as well
-        sendAckLessMessage(InternalMessages.DISCONNECT);
+        if (isSocketAlive()) {
+            // Thus the other side has to be notified about this decision as well
+            sendAckLessMessage(InternalMessages.DISCONNECT);
 
-        // before we close down the local socket.
-        assymentricDisconnect(true);
+            // before we close down the local socket.
+            assymentricDisconnect(true);
+        }
     }
 
     /**
      * Actively closing the connection prevents replying to further incoming
-     * heartbeats / ACKs / sending of further messages.
+     * heartbeats / ACKs / sending of further messages. Method is synchronized
+     * because in rare cases two timeouts could otherwise trigger two
+     * simultaneous calls. (E.g. if concurrent hearbeat and message timeout) It
+     * suffices if observers are then notified only once, for a broken
+     * connection can never be revived.
      */
     @Override
-    protected void assymentricDisconnect(boolean intended)
+    protected synchronized void assymentricDisconnect(boolean intended)
     {
         if (socketAlive) {
 
             try {
-                socketAlive = false;
                 socket.close();
+                socketAlive = false;
 
                 //unblock all potentially blocked threads
                 for (CountDownLatch latch : ackBlockers.values()) {
@@ -362,7 +419,7 @@ public final class SafeSocket extends MessageHandler implements Terminatable
             catch (IOException ex) {
                 throw new RuntimeException("Unable to close connection.");
             }
-            notifyAllBreakDownObservers(intended);
+            notifyAllBreakDownObservers(intended); // < sends false here - how can that be?
         }
     }
 
@@ -373,6 +430,7 @@ public final class SafeSocket extends MessageHandler implements Terminatable
     @Override
     public void onTerminate(String cause)
     {
+        System.out.println("Termination request, due to ACK timeout: "+cause+(isSocketAlive()?"[UNDEFUSED]":"[DEFUSED]"));
         assymentricDisconnect(false);
     }
 
@@ -387,7 +445,7 @@ public final class SafeSocket extends MessageHandler implements Terminatable
             throw new RuntimeException("Sending of null / whitespace messages not allowed.");
         for (String line : message.split("\n")) {
             if (InternalMessages.isReserved(line)) {
-                disconnect();
+                close();
                 throw new RuntimeException("Shutting down connection due to "
                         + "malicious message colliding patterns reserved for"
                         + " internal safeSocket communication: "
@@ -399,13 +457,13 @@ public final class SafeSocket extends MessageHandler implements Terminatable
     @Override
     protected void handleUserMessage(String message, int salt)
     {
+        // Notify all local registered observers
+        notifyAllMessageObservers(message);
+
         // Create hash of wrapped message and send reception ACK back to sender
         String wrappedMessage = message + "\n" + InternalMessages.MESSAGE_DELIMITER + salt;
         String checksum = Md5Hasher.getMessageHash(wrappedMessage);
         sendAckLessMessage(InternalMessages.MESSAGE_ACK + checksum);
-
-        // Notify all local registered observers
-        notifyAllMessageObservers(message);
     }
 
     /**
