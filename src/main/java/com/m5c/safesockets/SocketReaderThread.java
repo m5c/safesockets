@@ -15,7 +15,7 @@ public class SocketReaderThread extends Thread
     // The socket whichs output is operated on
     private final Socket socket;
 
-    // The instance handling the extracted messages (lately the safeSocket)
+    // The instance handling the extracted messages (and also internal status messages like breakdown events.)
     private final MessageHandler messageHandler;
 
     // The filter to be used for all incoming messages
@@ -29,46 +29,43 @@ public class SocketReaderThread extends Thread
         this.inputFilter = inputFilter;
     }
 
+    /**
+     * Main task of the SocketReaderThread. Read and treat until closed or
+     * broken.
+     */
     @Override
     public void run()
     {
-        try { //ToDo : try-with resource instead!
-            while (true) {
-                BufferedReader bufferedReader = null;
-                try {
-                    bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-
-                    // Read in message coming over TCP Socket (until socket was closed ). Note: The connection will only be closed by the server, never by the client (except for breakdowns.)
-                    while (!socket.isClosed()) {
-                        StringBuilder messageBuilder = new StringBuilder("");
-
-                        // Keep on reading until message complete (or connection brutally closed)
-                        boolean messageComplete = false;
-                        while (!messageComplete) {
-                            messageComplete = handleInputLine(bufferedReader, messageBuilder);
-                        }
-                    }
-                }
-                catch (IOException ex) {
-                    System.out.println("IOEX on read.");
-                    throw new UnfriendlyConnectionBreakdownException();
-                }
-                finally {
-                    try {
-                        if (bufferedReader != null)
-                            bufferedReader.close();
-                    }
-                    catch (IOException ex) {
-                        System.out.println("IOEX on close.");
-                        throw new UnfriendlyConnectionBreakdownException();
-
-                    }
-                }
-            }
+        try {
+            listenUntilClosed();
         }
         catch (UnfriendlyConnectionBreakdownException e) {
-            System.out.println("TRY CATCH READER FAIL!");
-            messageHandler.assymentricDisconnect(false); // Must be cause...
+            
+            // Connection broke down without having been properly closed.
+            messageHandler.assymentricDisconnect(false);
+        }
+    }
+
+    /**
+     * Listens and handles anything that comes in until the line was socket was
+     * either correctly closed or the connection is considered dead.
+     *
+     * @throws UnfriendlyConnectionBreakdownException
+     */
+    private void listenUntilClosed() throws UnfriendlyConnectionBreakdownException
+    {
+        try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));) {
+
+            // Read in single lines coming over TCP Socket, fuse them to messages and handle them (until socket was closed ). Note: The connection will only be closed by the server, never by the client (except for breakdowns.)
+            StringBuilder messageBuilder = new StringBuilder("");
+            while (!socket.isClosed()) {
+                if (handleInputLine(bufferedReader, messageBuilder)) // reset stringbuilder if line completed a message
+                    messageBuilder = new StringBuilder("");
+            }
+        }
+        catch (IOException ioe) {
+            // This only happens when an implicit close call to bufferedReader failed. (No treatment required, if this happens there is a serious problem.)
+            throw new RuntimeException("Failed to implicitly close BufferedReader of try-with-ressource");
         }
     }
 
@@ -77,10 +74,17 @@ public class SocketReaderThread extends Thread
      * completed a payload message message (lines sent to this method can be
      * both, internal or payload).
      */
-    private boolean handleInputLine(BufferedReader bufferedReader, StringBuilder messageBuilder) throws UnfriendlyConnectionBreakdownException, IOException
+    private boolean handleInputLine(BufferedReader bufferedReader, StringBuilder messageBuilder) throws UnfriendlyConnectionBreakdownException
     {
         // Get the line that just arrived as sting. If not possible something nasty is happening -> just kill conection
-        String inputLine = bufferedReader.readLine();
+        String inputLine;
+        try {
+            inputLine = bufferedReader.readLine();
+        }
+        catch (IOException ex) {
+            System.out.println("IOEX on reading -> assuming breakdown");
+            throw new UnfriendlyConnectionBreakdownException();
+        }
         if (inputLine == null)
             throw new UnfriendlyConnectionBreakdownException();
 
@@ -99,8 +103,8 @@ public class SocketReaderThread extends Thread
     }
 
     /**
-    * Handles a single line that matches an internal message
-    */
+     * Handles a single line that matches an internal message
+     */
     private boolean handleReservedInputLine(String inputLine, StringBuilder messageBuilder)
     {
         // In case the signal to abandon connection was received -> properly shut down everything
@@ -123,10 +127,10 @@ public class SocketReaderThread extends Thread
 
     /**
      * Handles a single line of a payload message
-     * 
+     *
      * @param inputLine
      * @param messageBuilder
-     * @return 
+     * @return
      */
     private void handlePayloadInputLine(String inputLine, StringBuilder messageBuilder)
     {
